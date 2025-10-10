@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE `Chapter` ADD COLUMN `videoType` VARCHAR(191) NULL DEFAULT 'UPLOAD',
+    ADD COLUMN `youtubeVideoId` VARCHAR(191) NULL;
+
+-- AlterTable
+ALTER TABLE `Question` MODIFY `position` INTEGER NOT NULL DEFAULT 1;
