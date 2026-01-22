@@ -156,7 +156,7 @@ export default function HomePage() {
             >
               <Image
                 src={getCdnUrl("/pencil.png")}
-                alt="قلم"
+                alt="pencil"
                 width={50}
                 height={50}
                 className="object-contain"
