@@ -9,6 +9,7 @@ import { BookOpen, Play, Clock, Trophy, Wallet, TrendingUp, BookOpen as BookOpen
 import Link from "next/link";
 import Image from "next/image";
 import { Course, Purchase, Chapter } from "@prisma/client";
+import { getAssetUrl, getCdnUrl } from "@/lib/cdn";
 
 type CourseWithProgress = Course & {
   chapters: { id: string }[];
@@ -309,7 +310,7 @@ const CoursesPage = async () => {
               {/* Image Section */}
               <div className="relative h-64 lg:h-full">
                 <Image
-                  src={lastWatchedChapter.chapter.course.imageUrl || "/placeholder.png"}
+                  src={lastWatchedChapter.chapter.course.imageUrl ? getAssetUrl(lastWatchedChapter.chapter.course.imageUrl) : getCdnUrl("/placeholder.png")}
                   alt={lastWatchedChapter.chapter.course.title}
                   fill
                   className="object-cover"
@@ -408,7 +409,7 @@ const CoursesPage = async () => {
             >
               <div className="relative w-full aspect-[16/9]">
                 <Image
-                  src={course.imageUrl || "/placeholder.png"}
+                  src={course.imageUrl ? getAssetUrl(course.imageUrl) : getCdnUrl("/placeholder.png")}
                   alt={course.title}
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-300"

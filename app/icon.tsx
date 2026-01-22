@@ -3,6 +3,8 @@ import { ImageResponse } from 'next/og';
 // Route segment config
 export const runtime = 'edge';
 
+const CDN_BASE_URL = process.env.NEXT_PUBLIC_CDN_URL || 'https://ahmednader.b-cdn.net';
+
 // Image metadata
 export const size = {
   width: 32,
@@ -27,7 +29,7 @@ export default async function Icon() {
         }}
       >
         <img
-          src="/logo.png"
+          src={`${CDN_BASE_URL}/logo.png`}
           alt="Logo"
           style={{
             width: '100%',

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { getCdnUrl } from "@/lib/cdn";
 
 export const Logo = () => {
     return (
@@ -6,7 +7,7 @@ export const Logo = () => {
             height={100}
             width={100}
             alt="logo"
-            src="/logo.png"
+            src={getCdnUrl("/logo.png")}
             unoptimized
         />
     )

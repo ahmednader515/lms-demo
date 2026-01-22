@@ -9,6 +9,7 @@ import { Navbar } from "@/components/navbar";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/db"; // Import db client
+import { getCdnUrl, getAssetUrl } from "@/lib/cdn";
 
 // Define types based on Prisma schema
 type Course = {
@@ -119,7 +120,7 @@ export default function HomePage() {
           >
             <div className="relative w-64 h-64 md:w-80 md:h-80">
               <Image
-                src="/teacher-image.png"
+                src={getCdnUrl("/teacher-image.png")}
                 alt="حسن عبدالوهاب"
                 fill
                 priority
@@ -154,7 +155,7 @@ export default function HomePage() {
               whileHover={{ scale: 1.1, rotate: 5 }}
             >
               <Image
-                src="/pencil.png"
+                src={getCdnUrl("/pencil.png")}
                 alt="قلم"
                 width={50}
                 height={50}
@@ -187,7 +188,7 @@ export default function HomePage() {
               whileHover={{ scale: 1.1, rotate: -5 }}
             >
               <Image
-                src="/eraser.png"
+                src={getCdnUrl("/eraser.png")}
                 alt="ممحاة"
                 width={40}
                 height={40}
@@ -220,7 +221,7 @@ export default function HomePage() {
               whileHover={{ scale: 1.1, rotate: 10 }}
             >
               <Image
-                src="/ruler.png"
+                src={getCdnUrl("/ruler.png")}
                 alt="مسطرة"
                 width={55}
                 height={55}
@@ -359,7 +360,7 @@ export default function HomePage() {
                   >
                     <div className="relative w-full aspect-video">
                       <Image
-                        src={course.imageUrl || "/placeholder.png"}
+                        src={course.imageUrl ? getAssetUrl(course.imageUrl) : getCdnUrl("/placeholder.png")}
                         alt={course.title}
                         fill
                         className="object-cover rounded-t-xl"
@@ -439,7 +440,7 @@ export default function HomePage() {
                 <div className="flex items-center mb-4">
                   <div className="relative h-12 w-12 rounded-full overflow-hidden">
                     <Image
-                      src="/male.png"
+                      src={getCdnUrl("/male.png")}
                       alt={testimonial.name}
                       fill
                       className="object-cover"

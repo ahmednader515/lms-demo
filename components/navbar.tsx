@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useSession, signOut } from "next-auth/react";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { LogOut } from "lucide-react";
+import { getCdnUrl } from "@/lib/cdn";
 
 export const Navbar = () => {
   const { data: session } = useSession();
@@ -21,7 +22,7 @@ export const Navbar = () => {
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <Image
-              src="/logo.png"
+              src={getCdnUrl("/logo.png")}
               alt="Logo"
               width={100}
               height={100}

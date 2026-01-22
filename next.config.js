@@ -22,6 +22,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: '7o7q29b8xy.ufs.sh',
       },
+      {
+        protocol: 'https',
+        hostname: 'ahmednader.b-cdn.net',
+      },
     ],
   },
   serverExternalPackages: ['@prisma/client', 'bcrypt'],

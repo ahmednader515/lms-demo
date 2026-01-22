@@ -12,6 +12,7 @@ import { signIn } from "next-auth/react";
 import { Eye, EyeOff, ChevronLeft } from "lucide-react";
 import Image from "next/image";
 import { getDashboardUrlByRole } from "@/lib/utils";
+import { getCdnUrl } from "@/lib/cdn";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -89,7 +90,7 @@ export default function SignInPage() {
           <div className="text-center space-y-6 p-8">
             <div className="relative w-64 h-64 mx-auto">
               <Image
-                src="/logo.png"
+                src={getCdnUrl("/logo.png")}
                 alt="Teacher"
                 fill
                 className="object-cover rounded-full border-4 border-[#211FC3]/20 shadow-2xl"

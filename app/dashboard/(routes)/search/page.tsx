@@ -8,6 +8,7 @@ import { BookOpen, Clock, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { Course, Purchase } from "@prisma/client";
+import { getAssetUrl, getCdnUrl } from "@/lib/cdn";
 
 type CourseWithDetails = Course & {
     chapters: { id: string }[];
@@ -122,7 +123,7 @@ export default async function SearchPage({
                         >
                             <div className="relative w-full aspect-[16/9]">
                                 <Image
-                                    src={course.imageUrl || "/placeholder.png"}
+                                    src={course.imageUrl ? getAssetUrl(course.imageUrl) : getCdnUrl("/placeholder.png")}
                                     alt={course.title}
                                     fill
                                     className="object-cover group-hover:scale-105 transition-transform duration-300"
