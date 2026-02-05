@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -8,13 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ArrowRight, Loader2, ArrowLeft } from "lucide-react";
-
-// Declare Fawaterak plugin types
-declare global {
-  interface Window {
-    fawaterkCheckout: (config: any) => void;
-  }
-}
+import Image from "next/image";
+import { getCdnUrl } from "@/lib/cdn";
 
 interface PaymentMethodInfo {
   id: string;
@@ -139,10 +134,8 @@ export default function PaymentMethodPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodInfo | null>(null);
+  const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
-  const [showPlugin, setShowPlugin] = useState(false);
-  const [hashKey, setHashKey] = useState<string | null>(null);
-  const pluginLoadedRef = useRef(false);
 
   useEffect(() => {
     const methodParam = params?.method as string;
@@ -160,102 +153,6 @@ export default function PaymentMethodPage() {
     }
   }, [params, router]);
 
-  // Listen for plugin callbacks and intercept redirects
-  useEffect(() => {
-    if (showPlugin && typeof window !== "undefined") {
-      const originalOpen = window.open;
-      
-      // Override window.open to detect redirects
-      window.open = function(url?: string | URL, target?: string, features?: string) {
-        console.warn("[FAWATERAK] window.open intercepted:", url);
-        // If it's trying to open Fawaterak invoice URL, this means plugin failed
-        if (url && typeof url === "string" && (url.includes("fawaterk.com/invoice") || url.includes("fawaterk.com/invoice"))) {
-          console.error("[FAWATERAK] Plugin attempted to redirect to invoice page. This indicates:");
-          console.error("1. Domain might not be configured correctly in Fawaterak dashboard");
-          console.error("2. HashKey might be incorrect");
-          console.error("3. Plugin might not be loading correctly");
-          console.error("4. Check browser console for plugin errors");
-          toast.error("فشل تحميل نظام الدفع المدمج. سيتم فتح صفحة الدفع في تبويب جديد");
-          // Allow redirect but log the issue
-          return originalOpen.call(window, url, target, features);
-        }
-        // Allow other opens (like success redirects)
-        return originalOpen.call(window, url, target, features);
-      };
-
-      // Listen for plugin messages/callbacks
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin.includes("fawaterk.com") || event.origin.includes("fawaterak.com")) {
-          console.log("[FAWATERAK] Plugin message received:", event.data);
-          
-          // If plugin sends invoice_key, store it
-          if (event.data?.invoice_key && paymentId) {
-            // Update payment with invoice key
-            fetch(`/api/payment/fawaterak/update-invoice`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                paymentId,
-                invoiceKey: event.data.invoice_key,
-              }),
-            }).catch(console.error);
-          }
-        }
-      };
-
-      window.addEventListener("message", handleMessage);
-
-      return () => {
-        // Restore original window.open
-        window.open = originalOpen;
-        window.removeEventListener("message", handleMessage);
-      };
-    }
-  }, [showPlugin, paymentId]);
-
-  // Load Fawaterak plugin script
-  useEffect(() => {
-    if (!pluginLoadedRef.current && typeof window !== "undefined") {
-      // Check if script already exists
-      const existingScript = document.querySelector('script[src*="fawaterkPlugin"]');
-      if (existingScript) {
-        pluginLoadedRef.current = true;
-        console.log("[FAWATERAK] Plugin script already exists");
-        return;
-      }
-
-      const script = document.createElement("script");
-      // Use staging plugin URL if using staging API
-      const isStaging = window.location.hostname.includes("localhost") || 
-                       process.env.NEXT_PUBLIC_APP_URL?.includes("staging") ||
-                       process.env.FAWATERAK_API_URL?.includes("staging");
-      script.src = isStaging 
-        ? "https://staging.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js"
-        : "https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js";
-      script.async = true;
-      console.log("[FAWATERAK] Loading plugin from:", script.src);
-      script.onload = () => {
-        pluginLoadedRef.current = true;
-        console.log("[FAWATERAK] Plugin script loaded successfully");
-        // Verify function is available
-        if (typeof window !== "undefined" && typeof window.fawaterkCheckout === "function") {
-          console.log("[FAWATERAK] fawaterkCheckout function is available");
-        } else {
-          console.error("[FAWATERAK] fawaterkCheckout function not found after script load");
-        }
-      };
-      script.onerror = () => {
-        console.error("[FAWATERAK] Failed to load plugin script");
-        toast.error("فشل تحميل نظام الدفع");
-      };
-      document.body.appendChild(script);
-
-      return () => {
-        // Cleanup if needed
-      };
-    }
-  }, []);
-
   // Get amount from URL query params
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -265,11 +162,32 @@ export default function PaymentMethodPage() {
     }
   }, []);
 
-  // Reset plugin when amount changes
+  // Poll payment status when invoice is shown
   useEffect(() => {
-    setShowPlugin(false);
-    setPaymentId(null);
-  }, [amount]);
+    if (!paymentId || !invoiceUrl) return;
+
+    const checkPaymentStatus = async () => {
+      try {
+        const response = await fetch(`/api/payment/fawaterak/status/${paymentId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'PAID') {
+            toast.success("تم الدفع بنجاح! سيتم تحديث الرصيد تلقائياً");
+            // Redirect back to balance page after a short delay
+            setTimeout(() => {
+              router.push(`/dashboard/balance?payment=${paymentId}&status=success`);
+            }, 2000);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking payment status:", error);
+      }
+    };
+
+    // Check every 3 seconds
+    const interval = setInterval(checkPaymentStatus, 3000);
+    return () => clearInterval(interval);
+  }, [paymentId, invoiceUrl, router]);
 
   const handleInputChange = (name: string, value: string) => {
     setFormData((prev) => ({
@@ -303,8 +221,8 @@ export default function PaymentMethodPage() {
 
     setIsProcessing(true);
     try {
-      // Step 1: Create payment record (without creating Fawaterak invoice)
-      const prepareResponse = await fetch("/api/payment/fawaterak/prepare", {
+      // Create Fawaterak invoice
+      const response = await fetch("/api/payment/fawaterak/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -312,153 +230,25 @@ export default function PaymentMethodPage() {
         body: JSON.stringify({
           amount: parseFloat(amount),
           paymentMethod: paymentMethod?.id,
+          paymentDetails: formData,
         }),
       });
 
-      if (!prepareResponse.ok) {
-        const error = await prepareResponse.text();
-        toast.error(error || "حدث خطأ أثناء تحضير الدفع");
-        setIsProcessing(false);
-        return;
-      }
-
-      const prepareData = await prepareResponse.json();
-      if (!prepareData.paymentId) {
-        toast.error("لم يتم إنشاء سجل الدفع");
-        setIsProcessing(false);
-        return;
-      }
-
-      setPaymentId(prepareData.paymentId);
-
-      // Step 2: Get hashKey
-      const hashResponse = await fetch("/api/payment/fawaterak/hash", {
-        method: "POST",
-      });
-
-      if (!hashResponse.ok) {
-        toast.error("حدث خطأ أثناء تحضير الدفع");
-        setIsProcessing(false);
-        return;
-      }
-
-      const hashData = await hashResponse.json();
-      setHashKey(hashData.hashKey);
-
-      // Step 3: Get user data for plugin config
-      const userResponse = await fetch("/api/user/me");
-      if (!userResponse.ok) {
-        toast.error("حدث خطأ أثناء تحميل بيانات المستخدم");
-        setIsProcessing(false);
-        return;
-      }
-
-      const userData = await userResponse.json();
-      const nameParts = (userData.fullName || "").trim().split(/\s+/);
-      const firstName = nameParts[0] || userData.fullName || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
-      // Step 4: Initialize Fawaterak plugin
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-      // Use "test" for staging API, "live" for production API
-      const isStaging = baseUrl.includes("localhost") || baseUrl.includes("staging") || process.env.FAWATERAK_API_URL?.includes("staging");
-      const pluginConfig = {
-        envType: isStaging ? "test" : "live",
-        hashKey: hashData.hashKey,
-        style: {
-          listing: "horizontal",
-        },
-        version: "0",
-        requestBody: {
-          cartTotal: amount.toString(),
-          currency: "EGP",
-          customer: {
-            first_name: firstName,
-            last_name: lastName,
-            email: userData.phoneNumber
-              ? `${userData.phoneNumber}@lms.local`
-              : `${userData.id}@lms.local`,
-            phone: userData.phoneNumber || "",
-            address: "",
-            customer_unique_id: userData.id || session?.user?.id || "",
-          },
-          redirectionUrls: {
-            successUrl: `${baseUrl}/dashboard/balance?payment=${prepareData.paymentId}&status=success`,
-            failUrl: `${baseUrl}/dashboard/balance?payment=${prepareData.paymentId}&status=fail`,
-            pendingUrl: `${baseUrl}/dashboard/balance?payment=${prepareData.paymentId}&status=pending`,
-          },
-          cartItems: [
-            {
-              name: `إضافة رصيد - ${prepareData.paymentId}`,
-              price: amount.toString(),
-              quantity: "1",
-            },
-          ],
-          payLoad: {
-            paymentId: prepareData.paymentId,
-            userId: session?.user?.id,
-            paymentMethod: paymentMethod?.id,
-          },
-        },
-        redirectOutIframe: false, // Keep payment in iframe
-      };
-
-      // Wait for plugin to be loaded
-      if (!pluginLoadedRef.current) {
-        // Wait longer for script to load
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-
-      // Check if plugin is available
-      if (typeof window !== "undefined" && typeof window.fawaterkCheckout === "function") {
-        console.log("[FAWATERAK] Plugin found, initializing...");
-        
-        // Clear any existing content in the div first
-        const pluginDiv = document.getElementById("fawaterkDivId");
-        if (pluginDiv) {
-          pluginDiv.innerHTML = "";
-          console.log("[FAWATERAK] Plugin div cleared");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.invoiceUrl && data.paymentId) {
+          // Store invoice URL and payment ID for iframe embedding
+          setInvoiceUrl(data.invoiceUrl);
+          setPaymentId(data.paymentId);
+          setIsProcessing(false);
+          toast.success("تم إنشاء رابط الدفع بنجاح");
         } else {
-          console.error("[FAWATERAK] Plugin div not found!");
+          toast.error("لم يتم إنشاء رابط الدفع");
+          setIsProcessing(false);
         }
-        
-        setShowPlugin(true);
-        setIsProcessing(false);
-        
-        // Initialize plugin after ensuring DOM is ready
-        setTimeout(() => {
-          try {
-            console.log("[FAWATERAK] Calling fawaterkCheckout with config:", {
-              envType: pluginConfig.envType,
-              hashKeyPrefix: pluginConfig.hashKey.substring(0, 20) + "...",
-              cartTotal: pluginConfig.requestBody.cartTotal,
-            });
-            
-            window.fawaterkCheckout(pluginConfig);
-            
-            // Check if plugin div was populated after a delay
-            setTimeout(() => {
-              const div = document.getElementById("fawaterkDivId");
-              if (div && div.children.length === 0) {
-                console.error("[FAWATERAK] Plugin div is empty after initialization!");
-                toast.error("فشل تحميل نظام الدفع. يرجى التحقق من إعدادات الدومين في Fawaterak");
-              } else {
-                console.log("[FAWATERAK] Plugin div populated successfully");
-              }
-            }, 2000);
-            
-            console.log("[FAWATERAK] Plugin initialized successfully");
-          } catch (error) {
-            console.error("[FAWATERAK_PLUGIN_ERROR]", error);
-            toast.error("حدث خطأ أثناء تحميل نظام الدفع: " + (error as Error).message);
-            setIsProcessing(false);
-            setShowPlugin(false);
-          }
-        }, 500); // Increased delay to ensure DOM is ready
       } else {
-        console.error("[FAWATERAK] Plugin not found on window object");
-        console.error("[FAWATERAK] window.fawaterkCheckout type:", typeof window.fawaterkCheckout);
-        toast.error("لم يتم تحميل نظام الدفع. يرجى تحديث الصفحة والمحاولة مرة أخرى");
+        const error = await response.text();
+        toast.error(error || "حدث خطأ أثناء إنشاء رابط الدفع");
         setIsProcessing(false);
       }
     } catch (error) {
@@ -476,8 +266,87 @@ export default function PaymentMethodPage() {
     );
   }
 
+  // Show payment iframe if invoice URL is available
+  if (invoiceUrl) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header with Logo */}
+        <div className="bg-white border-b shadow-sm">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Image
+                  src={getCdnUrl("/logo.png")}
+                  alt="Logo"
+                  width={80}
+                  height={80}
+                  className="object-contain"
+                  unoptimized
+                />
+                <div>
+                  <h1 className="text-2xl font-bold text-[#211FC3]">مستقبلنا</h1>
+                  <p className="text-sm text-muted-foreground">إضافة رصيد - {paymentMethod.name}</p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => router.push("/dashboard/balance")}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                العودة
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Info */}
+        <div className="container mx-auto px-4 py-6">
+          <Card className="mb-4">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">المبلغ</p>
+                  <p className="text-2xl font-bold text-[#211FC3]">{amount} جنيه</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-muted-foreground">طريقة الدفع</p>
+                  <p className="text-lg font-semibold">{paymentMethod.name}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Fawaterak Invoice Iframe */}
+          <Card>
+            <CardHeader>
+              <CardTitle>إتمام عملية الدفع</CardTitle>
+              <CardDescription>
+                أكمل عملية الدفع باستخدام {paymentMethod.name}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="w-full" style={{ minHeight: '800px' }}>
+                <iframe
+                  src={invoiceUrl}
+                  className="w-full border-0 rounded-lg"
+                  style={{ minHeight: '800px', width: '100%' }}
+                  title="Fawaterak Payment"
+                  allow="payment *"
+                  sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-top-navigation allow-modals"
+                />
+              </div>
+              <div className="mt-4 text-center text-sm text-muted-foreground">
+                <p>بعد إتمام الدفع، سيتم تحديث رصيدك تلقائياً</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto">
       <Button
         variant="ghost"
         onClick={() => router.push("/dashboard/balance")}
@@ -491,91 +360,71 @@ export default function PaymentMethodPage() {
         <CardHeader>
           <CardTitle className="text-2xl">دفع عبر {paymentMethod.name}</CardTitle>
           <CardDescription>
-            {showPlugin
-              ? "اختر طريقة الدفع وأكمل العملية"
-              : `أكمل عملية الدفع باستخدام ${paymentMethod.name}`}
+            أكمل عملية الدفع باستخدام {paymentMethod.name}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!showPlugin ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Amount Input */}
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  المبلغ (جنيه)
-                </label>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="أدخل المبلغ"
-                  min="1"
-                  step="0.01"
-                  required
-                  className="text-lg"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  الحد الأدنى: 1 جنيه
-                </p>
-              </div>
-
-              {/* Payment Method Specific Fields */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">معلومات الدفع</h3>
-                {paymentMethod.fields.map((field) => (
-                  <div key={field.name}>
-                    <label className="text-sm font-medium mb-2 block">
-                      {field.label}
-                      {field.required && <span className="text-red-500">*</span>}
-                    </label>
-                    <Input
-                      type={field.type}
-                      value={formData[field.name] || ""}
-                      onChange={(e) => handleInputChange(field.name, e.target.value)}
-                      placeholder={field.placeholder}
-                      required={field.required}
-                      className="w-full"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                disabled={isProcessing}
-                className="w-full bg-[#211FC3] hover:bg-[#211FC3]/90 text-lg py-6"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    جاري المعالجة...
-                  </>
-                ) : (
-                  <>
-                    المتابعة إلى الدفع
-                    <ArrowRight className="h-5 w-5 mr-2" />
-                  </>
-                )}
-              </Button>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground mb-2">
-                  المبلغ: {amount} جنيه
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  اختر طريقة الدفع من القائمة أدناه
-                </p>
-              </div>
-              {/* Fawaterak Plugin Container */}
-              <div id="fawaterkDivId" className="min-h-[400px]"></div>
-              <div className="text-center text-sm text-muted-foreground mt-4">
-                <p>بعد إتمام الدفع، سيتم تحديث رصيدك تلقائياً</p>
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Amount Input */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                المبلغ (جنيه)
+              </label>
+              <Input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="أدخل المبلغ"
+                min="1"
+                step="0.01"
+                required
+                className="text-lg"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                الحد الأدنى: 1 جنيه
+              </p>
             </div>
-          )}
+
+            {/* Payment Method Specific Fields */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">معلومات الدفع</h3>
+              {paymentMethod.fields.map((field) => (
+                <div key={field.name}>
+                  <label className="text-sm font-medium mb-2 block">
+                    {field.label}
+                    {field.required && <span className="text-red-500">*</span>}
+                  </label>
+                  <Input
+                    type={field.type}
+                    value={formData[field.name] || ""}
+                    onChange={(e) => handleInputChange(field.name, e.target.value)}
+                    placeholder={field.placeholder}
+                    required={field.required}
+                    className="w-full"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              disabled={isProcessing}
+              className="w-full bg-[#211FC3] hover:bg-[#211FC3]/90 text-lg py-6"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  جاري المعالجة...
+                </>
+              ) : (
+                <>
+                  المتابعة إلى الدفع
+                  <ArrowRight className="h-5 w-5 mr-2" />
+                </>
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

@@ -5,22 +5,31 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     
-    console.log("[FAWATERAK_WEBHOOK_PAID]", JSON.stringify(body, null, 2));
+    console.log("[FAWATERAK_WEBHOOK_PAID] Full payload:", JSON.stringify(body, null, 2));
     
     // Fawaterak paid webhook payload structure
-    const {
+    // Try different possible field names
+    const invoice_key = body.invoice_key || body.invoiceKey || body.invoice_id || body.invoiceId || body.key;
+    const invoice_status = body.invoice_status || body.status || body.invoiceStatus || body.invoice_status_name;
+    const invoice_total = body.invoice_total || body.total || body.amount || body.cartTotal || body.invoice_total_amount;
+    const payment_method = body.payment_method || body.paymentMethod || body.payment_method_name || body.paymentMethodName;
+    const customer_name = body.customer_name || body.customerName || body.name;
+    const customer_phone = body.customer_phone || body.customerPhone || body.phone || body.customer_phone_number;
+    const customer_email = body.customer_email || body.customerEmail || body.email;
+    const metaData = body.metaData || body.metadata || body.meta || body.payload || {};
+
+    console.log("[FAWATERAK_WEBHOOK_PAID] Parsed fields:", {
       invoice_key,
       invoice_status,
       invoice_total,
       payment_method,
-      customer_name,
-      customer_phone,
-      customer_email,
-      metaData,
-    } = body;
+      metaDataKeys: Object.keys(metaData),
+      allBodyKeys: Object.keys(body),
+    });
 
     if (!invoice_key) {
-      console.error("[FAWATERAK_WEBHOOK_PAID] Missing invoice_key");
+      console.error("[FAWATERAK_WEBHOOK_PAID] Missing invoice_key in payload");
+      console.error("[FAWATERAK_WEBHOOK_PAID] Available keys:", Object.keys(body));
       return new NextResponse("Missing invoice_key", { status: 400 });
     }
 
@@ -97,13 +106,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Add balance to user account
-    await db.user.update({
+    const updatedUser = await db.user.update({
       where: { id: payment.userId },
       data: {
         balance: {
           increment: payment.amount,
         },
       },
+      select: { balance: true },
     });
 
     // Create balance transaction record
@@ -121,9 +131,15 @@ export async function POST(req: NextRequest) {
       userId: payment.userId,
       amount: payment.amount,
       invoiceKey: invoice_key,
+      oldBalance: payment.user.balance,
+      newBalance: updatedUser.balance,
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      paymentId: payment.id,
+      newBalance: updatedUser.balance,
+    });
   } catch (error) {
     console.error("[FAWATERAK_WEBHOOK_PAID_ERROR]", error);
     return new NextResponse("Internal Error", { status: 500 });
