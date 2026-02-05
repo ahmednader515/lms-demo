@@ -160,33 +160,58 @@ export default function PaymentMethodPage() {
     }
   }, [params, router]);
 
-  // Intercept window.open to prevent redirects
+  // Listen for plugin callbacks and intercept redirects
   useEffect(() => {
     if (showPlugin && typeof window !== "undefined") {
       const originalOpen = window.open;
       
-      // Override window.open to prevent redirects
+      // Override window.open to detect redirects
       window.open = function(url?: string | URL, target?: string, features?: string) {
         console.warn("[FAWATERAK] window.open intercepted:", url);
-        // If it's trying to open Fawaterak URL, log it but don't open
-        if (url && typeof url === "string" && url.includes("fawaterk")) {
-          console.error("[FAWATERAK] Plugin attempted to redirect. This might indicate:");
-          console.error("1. Domain not configured in Fawaterak dashboard");
-          console.error("2. HashKey is incorrect");
-          console.error("3. Plugin configuration error");
-          toast.error("حدث خطأ في تحميل نظام الدفع. يرجى التحقق من إعدادات الدومين في لوحة تحكم Fawaterak");
-          return null;
+        // If it's trying to open Fawaterak invoice URL, this means plugin failed
+        if (url && typeof url === "string" && (url.includes("fawaterk.com/invoice") || url.includes("fawaterk.com/invoice"))) {
+          console.error("[FAWATERAK] Plugin attempted to redirect to invoice page. This indicates:");
+          console.error("1. Domain might not be configured correctly in Fawaterak dashboard");
+          console.error("2. HashKey might be incorrect");
+          console.error("3. Plugin might not be loading correctly");
+          console.error("4. Check browser console for plugin errors");
+          toast.error("فشل تحميل نظام الدفع المدمج. سيتم فتح صفحة الدفع في تبويب جديد");
+          // Allow redirect but log the issue
+          return originalOpen.call(window, url, target, features);
         }
         // Allow other opens (like success redirects)
         return originalOpen.call(window, url, target, features);
       };
 
+      // Listen for plugin messages/callbacks
+      const handleMessage = (event: MessageEvent) => {
+        if (event.origin.includes("fawaterk.com") || event.origin.includes("fawaterak.com")) {
+          console.log("[FAWATERAK] Plugin message received:", event.data);
+          
+          // If plugin sends invoice_key, store it
+          if (event.data?.invoice_key && paymentId) {
+            // Update payment with invoice key
+            fetch(`/api/payment/fawaterak/update-invoice`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                paymentId,
+                invoiceKey: event.data.invoice_key,
+              }),
+            }).catch(console.error);
+          }
+        }
+      };
+
+      window.addEventListener("message", handleMessage);
+
       return () => {
         // Restore original window.open
         window.open = originalOpen;
+        window.removeEventListener("message", handleMessage);
       };
     }
-  }, [showPlugin]);
+  }, [showPlugin, paymentId]);
 
   // Load Fawaterak plugin script
   useEffect(() => {
@@ -200,8 +225,15 @@ export default function PaymentMethodPage() {
       }
 
       const script = document.createElement("script");
-      script.src = "https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js";
+      // Use staging plugin URL if using staging API
+      const isStaging = window.location.hostname.includes("localhost") || 
+                       process.env.NEXT_PUBLIC_APP_URL?.includes("staging") ||
+                       process.env.FAWATERAK_API_URL?.includes("staging");
+      script.src = isStaging 
+        ? "https://staging.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js"
+        : "https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js";
       script.async = true;
+      console.log("[FAWATERAK] Loading plugin from:", script.src);
       script.onload = () => {
         pluginLoadedRef.current = true;
         console.log("[FAWATERAK] Plugin script loaded successfully");
@@ -328,8 +360,10 @@ export default function PaymentMethodPage() {
 
       // Step 4: Initialize Fawaterak plugin
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      // Use "test" for staging API, "live" for production API
+      const isStaging = baseUrl.includes("localhost") || baseUrl.includes("staging") || process.env.FAWATERAK_API_URL?.includes("staging");
       const pluginConfig = {
-        envType: process.env.NODE_ENV === "production" ? "live" : "test",
+        envType: isStaging ? "test" : "live",
         hashKey: hashData.hashKey,
         style: {
           listing: "horizontal",

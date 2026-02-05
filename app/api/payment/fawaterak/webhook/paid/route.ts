@@ -24,14 +24,60 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Missing invoice_key", { status: 400 });
     }
 
-    // Find payment by invoice key
-    const payment = await db.payment.findUnique({
+    // Find payment by invoice key or metaData.paymentId
+    let payment = await db.payment.findUnique({
       where: { fawaterakInvoiceId: invoice_key },
       include: { user: true },
     });
 
+    // If not found by invoice key, try finding by paymentId in metaData
+    if (!payment && metaData?.paymentId) {
+      console.log("[FAWATERAK_WEBHOOK_PAID] Looking up payment by paymentId from metaData:", metaData.paymentId);
+      payment = await db.payment.findUnique({
+        where: { id: metaData.paymentId },
+        include: { user: true },
+      });
+      
+      // Update payment with invoice key for future lookups
+      if (payment) {
+        await db.payment.update({
+          where: { id: payment.id },
+          data: { fawaterakInvoiceId: invoice_key },
+        });
+        console.log("[FAWATERAK_WEBHOOK_PAID] Updated payment with invoice key:", invoice_key);
+      }
+    }
+
+    // Last resort: try to find by customer phone/email and amount if metaData has userId
+    if (!payment && metaData?.userId && invoice_total) {
+      console.log("[FAWATERAK_WEBHOOK_PAID] Trying to find payment by userId and amount:", metaData.userId, invoice_total);
+      const pendingPayments = await db.payment.findMany({
+        where: {
+          userId: metaData.userId,
+          amount: parseFloat(invoice_total),
+          status: "PENDING",
+        },
+        include: { user: true },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      });
+      
+      if (pendingPayments.length > 0) {
+        payment = pendingPayments[0];
+        // Update with invoice key
+        await db.payment.update({
+          where: { id: payment.id },
+          data: { fawaterakInvoiceId: invoice_key },
+        });
+        console.log("[FAWATERAK_WEBHOOK_PAID] Found payment by userId/amount and updated with invoice key");
+      }
+    }
+
     if (!payment) {
       console.error("[FAWATERAK_WEBHOOK_PAID] Payment not found for invoice:", invoice_key);
+      console.error("[FAWATERAK_WEBHOOK_PAID] metaData:", JSON.stringify(metaData, null, 2));
+      console.error("[FAWATERAK_WEBHOOK_PAID] invoice_total:", invoice_total);
+      console.error("[FAWATERAK_WEBHOOK_PAID] customer_phone:", customer_phone);
       return new NextResponse("Payment not found", { status: 404 });
     }
 
