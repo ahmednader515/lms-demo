@@ -20,8 +20,23 @@ export async function POST(req: NextRequest) {
     // Generate hashKey using HMAC SHA256
     // Format: Domain=YOUR_WEBSITE_DOMAIN&ProviderKey=FAWATERAK_PROVIDER_KEY
     // Note: Domain should be just the hostname (no protocol, no port, no path)
-    const url = new URL(NEXT_PUBLIC_APP_URL);
-    const domain = url.hostname; // Just the hostname, no port
+    // For localhost, use "localhost" (without port)
+    let domain: string;
+    try {
+      const url = new URL(NEXT_PUBLIC_APP_URL);
+      domain = url.hostname;
+      // For localhost, remove port if present
+      if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
+        domain = "localhost";
+      }
+    } catch {
+      // If URL parsing fails, try to extract domain manually
+      domain = NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, "").replace(/:\d+/, "").split("/")[0];
+      if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
+        domain = "localhost";
+      }
+    }
+    
     const queryParam = `Domain=${domain}&ProviderKey=${FAWATERAK_PROVIDER_KEY}`;
     const hashKey = crypto
       .createHmac('sha256', FAWATERAK_VENDOR_KEY)
@@ -29,9 +44,12 @@ export async function POST(req: NextRequest) {
       .digest('hex');
     
     console.log("[FAWATERAK_HASH]", {
+      originalUrl: NEXT_PUBLIC_APP_URL,
       domain,
+      providerKey: FAWATERAK_PROVIDER_KEY,
       queryParam,
       hashKeyPrefix: hashKey.substring(0, 20) + "...",
+      vendorKeyPrefix: FAWATERAK_VENDOR_KEY?.substring(0, 10) + "...",
     });
 
     return NextResponse.json({

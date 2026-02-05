@@ -14,7 +14,9 @@ import { getCdnUrl } from "@/lib/cdn";
 declare global {
   interface Window {
     fawaterkCheckout?: (config: any) => void;
+    $?: any; // jQuery
   }
+  var fawaterkCheckout: ((config: any) => void) | undefined;
 }
 
 function FawaterakPluginPaymentPageContent() {
@@ -97,9 +99,20 @@ function FawaterakPluginPaymentPageContent() {
           method: "POST",
         });
         if (!hashResponse.ok) {
-          throw new Error("Failed to get hash key");
+          const errorText = await hashResponse.text();
+          console.error("[FAWATERAK_PLUGIN] Hash API error:", errorText);
+          throw new Error(`Failed to get hash key: ${errorText}`);
         }
         const { hashKey, domain } = await hashResponse.json();
+        
+        if (!hashKey) {
+          throw new Error("Hash key is empty");
+        }
+        
+        console.log("[FAWATERAK_PLUGIN] Hash key received:", {
+          domain,
+          hashKeyPrefix: hashKey.substring(0, 20) + "...",
+        });
 
         // Get user data
         const userResponse = await fetch("/api/user/me");
@@ -179,26 +192,37 @@ function FawaterakPluginPaymentPageContent() {
 
         // Wait a bit for the plugin script and jQuery to be fully ready
         setTimeout(() => {
-          if (typeof window.fawaterkCheckout === 'function') {
+          // Make pluginConfig available globally (plugin might access it from global scope)
+          (window as any).pluginConfig = pluginConfig;
+          
+          // Try both window.fawaterkCheckout and global fawaterkCheckout
+          const fawaterkCheckoutFn = (window as any).fawaterkCheckout || (globalThis as any).fawaterkCheckout;
+          
+          if (typeof fawaterkCheckoutFn === 'function') {
             try {
+              console.log("[FAWATERAK_PLUGIN] Calling fawaterkCheckout with config");
+              
               // Call the plugin function directly (matching the example)
-              window.fawaterkCheckout(pluginConfig);
+              // The plugin might access pluginConfig from global scope
+              fawaterkCheckoutFn(pluginConfig);
               pluginInitialized.current = true;
               console.log("[FAWATERAK_PLUGIN] Plugin initialized successfully");
               setIsInitializing(false);
             } catch (err: any) {
               console.error("[FAWATERAK_PLUGIN] Error initializing plugin:", err);
+              console.error("[FAWATERAK_PLUGIN] Error stack:", err?.stack);
               setError(err?.message || "فشل تهيئة نظام الدفع");
               setIsInitializing(false);
             }
           } else {
             console.error("[FAWATERAK_PLUGIN] fawaterkCheckout function not available");
-            console.error("[FAWATERAK_PLUGIN] jQuery available:", typeof window.$ !== 'undefined');
-            console.error("[FAWATERAK_PLUGIN] Window object:", Object.keys(window).filter(k => k.includes('fawater')));
+            console.error("[FAWATERAK_PLUGIN] jQuery available:", typeof (window as any).$ !== 'undefined');
+            console.error("[FAWATERAK_PLUGIN] Window keys:", Object.keys(window).filter(k => k.toLowerCase().includes('fawater')));
+            console.error("[FAWATERAK_PLUGIN] Global keys:", Object.keys(globalThis).filter(k => k.toLowerCase().includes('fawater')));
             setError("نظام الدفع غير متاح. يرجى المحاولة مرة أخرى.");
             setIsInitializing(false);
           }
-        }, 1000); // Increased timeout to ensure jQuery and plugin are loaded
+        }, 1500); // Increased timeout to ensure jQuery and plugin are fully loaded
       } catch (err: any) {
         console.error("[FAWATERAK_PLUGIN] Error:", err);
         setError(err?.message || "حدث خطأ أثناء تهيئة نظام الدفع");
