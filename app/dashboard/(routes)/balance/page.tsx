@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,7 +78,7 @@ const getPaymentMethodRoute = (methodId: string, methodName: string, originalId?
   return null;
 };
 
-export default function BalancePage() {
+function BalancePageContent() {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -512,5 +512,17 @@ export default function BalancePage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function BalancePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-[#211FC3]" />
+      </div>
+    }>
+      <BalancePageContent />
+    </Suspense>
   );
 } 
