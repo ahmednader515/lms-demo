@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Video, Pencil, Upload, Youtube, Link } from "lucide-react";
+import { Video, Pencil, Upload, Youtube, Link, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/file-upload";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ interface VideoFormProps {
         videoUrl: string | null;
         videoType: string | null;
         youtubeVideoId: string | null;
+        bunnyStreamVideoId: string | null;
+        bunnyStreamLibraryId: string | null;
     };
     courseId: string;
     chapterId: string;
@@ -30,6 +32,8 @@ export const VideoForm = ({
     const [isMounted, setIsMounted] = useState(false);
     const [youtubeUrl, setYoutubeUrl] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isUploadingBunnyStream, setIsUploadingBunnyStream] = useState(false);
+    const bunnyStreamFileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
 
     useEffect(() => {
@@ -95,6 +99,34 @@ export const VideoForm = ({
         }
     }
 
+    const onSubmitBunnyStream = async (file: File) => {
+        try {
+            setIsUploadingBunnyStream(true);
+            const formData = new FormData();
+            formData.append('video', file);
+            formData.append('title', initialData.videoUrl || 'Chapter Video');
+
+            const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/bunny-stream`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(error || 'Failed to upload video to Bunny Stream');
+            }
+
+            toast.success("تم رفع الفيديو إلى Bunny Stream بنجاح");
+            setIsEditing(false);
+            router.refresh();
+        } catch (error) {
+            console.error("[BUNNY_STREAM_UPLOAD]", error);
+            toast.error(error instanceof Error ? error.message : "حدث خطأ ما");
+        } finally {
+            setIsUploadingBunnyStream(false);
+        }
+    }
+
     if (!isMounted) {
         return null;
     }
@@ -130,7 +162,9 @@ export const VideoForm = ({
                                 <PlyrVideoPlayer
                                     videoUrl={initialData.videoType === "UPLOAD" ? initialData.videoUrl : undefined}
                                     youtubeVideoId={initialData.videoType === "YOUTUBE" ? initialData.youtubeVideoId || undefined : undefined}
-                                    videoType={(initialData.videoType as "UPLOAD" | "YOUTUBE") || "UPLOAD"}
+                                    bunnyStreamVideoId={initialData.videoType === "BUNNY_STREAM" ? initialData.bunnyStreamVideoId || undefined : undefined}
+                                    bunnyStreamLibraryId={initialData.videoType === "BUNNY_STREAM" ? initialData.bunnyStreamLibraryId || undefined : undefined}
+                                    videoType={(initialData.videoType as "UPLOAD" | "YOUTUBE" | "BUNNY_STREAM") || "UPLOAD"}
                                     className="w-full h-full"
                                 />
                             );
@@ -145,8 +179,12 @@ export const VideoForm = ({
             
             {isEditing && (
                 <div className="mt-4">
-                    <Tabs defaultValue="upload" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
+                    <Tabs defaultValue="bunny-stream" className="w-full">
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="bunny-stream" className="flex items-center gap-2">
+                                <Shield className="h-4 w-4" />
+                                Bunny Stream (DRM)
+                            </TabsTrigger>
                             <TabsTrigger value="upload" className="flex items-center gap-2">
                                 <Upload className="h-4 w-4" />
                                 رفع فيديو
@@ -170,6 +208,47 @@ export const VideoForm = ({
                                         }
                                     }}
                                 />
+                            </div>
+                        </TabsContent>
+                        
+                        <TabsContent value="bunny-stream" className="mt-4">
+                            <div className="space-y-4">
+                                <div className="text-sm text-muted-foreground">
+                                    ارفع فيديو إلى Bunny Stream مع حماية DRM
+                                </div>
+                                <div className="space-y-2">
+                                    <input
+                                        ref={bunnyStreamFileInputRef}
+                                        type="file"
+                                        accept="video/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                onSubmitBunnyStream(file);
+                                            }
+                                        }}
+                                    />
+                                    <Button
+                                        onClick={() => bunnyStreamFileInputRef.current?.click()}
+                                        disabled={isUploadingBunnyStream}
+                                        className="w-full"
+                                        variant="outline"
+                                    >
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        {isUploadingBunnyStream ? "جاري الرفع..." : "اختر ملف فيديو"}
+                                    </Button>
+                                </div>
+                                {isUploadingBunnyStream && (
+                                    <div className="text-sm text-muted-foreground">
+                                        جاري الرفع إلى Bunny Stream... قد يستغرق هذا بعض الوقت
+                                    </div>
+                                )}
+                                <div className="text-xs text-muted-foreground">
+                                    سيتم رفع الفيديو إلى Bunny Stream مع تفعيل حماية DRM تلقائياً. 
+                                    <br />
+                                    بعد الرفع، سيتم ترميز الفيديو تلقائياً وقد يستغرق ذلك بضع دقائق.
+                                </div>
                             </div>
                         </TabsContent>
                         

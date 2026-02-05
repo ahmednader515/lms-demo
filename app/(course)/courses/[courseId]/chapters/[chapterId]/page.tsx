@@ -15,8 +15,10 @@ interface Chapter {
   description: string | null;
   isFree: boolean;
   videoUrl: string | null;
-  videoType: "UPLOAD" | "YOUTUBE" | null;
+  videoType: "UPLOAD" | "YOUTUBE" | "BUNNY_STREAM" | null;
   youtubeVideoId: string | null;
+  bunnyStreamVideoId: string | null;
+  bunnyStreamLibraryId: string | null;
   documentUrl: string | null;
   documentName: string | null;
   nextChapterId?: string;
@@ -43,6 +45,7 @@ const ChapterPage = () => {
   const [isCompleted, setIsCompleted] = useState(false);
   const [courseProgress, setCourseProgress] = useState(0);
   const [hasAccess, setHasAccess] = useState(false);
+  const [bunnyStreamToken, setBunnyStreamToken] = useState<string | null>(null);
 
   console.log("🔍 ChapterPage render:", {
     chapterId: routeParams.chapterId,
@@ -156,7 +159,24 @@ const ChapterPage = () => {
         setChapter(chapterResponse.data);
         setIsCompleted(chapterResponse.data.userProgress?.[0]?.isCompleted || false);
         setCourseProgress(progressResponse.data.progress);
-        setHasAccess(accessResponse.data.hasAccess);
+        const accessGranted = accessResponse.data.hasAccess;
+        setHasAccess(accessGranted);
+
+        // Fetch DRM token if it's a Bunny Stream video and user has access
+        if (chapterResponse.data.videoType === "BUNNY_STREAM" && 
+            chapterResponse.data.bunnyStreamVideoId && 
+            accessGranted) {
+          try {
+            const tokenResponse = await axios.get(
+              `/api/courses/${routeParams.courseId}/chapters/${routeParams.chapterId}/video-token`
+            );
+            if (tokenResponse.data.token) {
+              setBunnyStreamToken(tokenResponse.data.token);
+            }
+          } catch (error) {
+            console.error("Failed to fetch DRM token:", error);
+          }
+        }
       } catch (error) {
         const axiosError = error as AxiosError;
         console.error("🔍 Error fetching data:", axiosError);
@@ -286,7 +306,10 @@ const ChapterPage = () => {
                     key={`${chapter.id}-${chapter.videoUrl}-${chapter.videoType}`}
                     videoUrl={chapter.videoType === "UPLOAD" ? chapter.videoUrl : undefined}
                     youtubeVideoId={chapter.videoType === "YOUTUBE" ? chapter.youtubeVideoId || undefined : undefined}
-                    videoType={(chapter.videoType as "UPLOAD" | "YOUTUBE") || "UPLOAD"}
+                    bunnyStreamVideoId={chapter.videoType === "BUNNY_STREAM" ? chapter.bunnyStreamVideoId || undefined : undefined}
+                    bunnyStreamLibraryId={chapter.videoType === "BUNNY_STREAM" ? chapter.bunnyStreamLibraryId || undefined : undefined}
+                    bunnyStreamToken={chapter.videoType === "BUNNY_STREAM" ? bunnyStreamToken || undefined : undefined}
+                    videoType={(chapter.videoType as "UPLOAD" | "YOUTUBE" | "BUNNY_STREAM") || "UPLOAD"}
                     className="w-full h-full"
                     onEnded={onEnd}
                     onTimeUpdate={(currentTime) => {

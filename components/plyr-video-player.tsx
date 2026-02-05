@@ -2,11 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import "plyr/dist/plyr.css";
+import { BunnyStreamPlayer } from "./bunny-stream-player";
 
 interface PlyrVideoPlayerProps {
   videoUrl?: string;
   youtubeVideoId?: string;
-  videoType?: "UPLOAD" | "YOUTUBE";
+  bunnyStreamVideoId?: string;
+  bunnyStreamLibraryId?: string;
+  bunnyStreamToken?: string;
+  videoType?: "UPLOAD" | "YOUTUBE" | "BUNNY_STREAM";
   className?: string;
   onEnded?: () => void;
   onTimeUpdate?: (currentTime: number) => void;
@@ -15,6 +19,9 @@ interface PlyrVideoPlayerProps {
 export const PlyrVideoPlayer = ({
   videoUrl,
   youtubeVideoId,
+  bunnyStreamVideoId,
+  bunnyStreamLibraryId,
+  bunnyStreamToken,
   videoType = "UPLOAD",
   className,
   onEnded,
@@ -23,6 +30,20 @@ export const PlyrVideoPlayer = ({
   const html5VideoRef = useRef<HTMLVideoElement>(null);
   const youtubeEmbedRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+
+  // Handle Bunny Stream videos
+  if (videoType === "BUNNY_STREAM" && bunnyStreamVideoId && bunnyStreamLibraryId) {
+    return (
+      <BunnyStreamPlayer
+        videoId={bunnyStreamVideoId}
+        libraryId={bunnyStreamLibraryId}
+        token={bunnyStreamToken}
+        className={className}
+        onEnded={onEnded}
+        onTimeUpdate={onTimeUpdate}
+      />
+    );
+  }
 
   // Initialize Plyr on mount/update and destroy on unmount
   useEffect(() => {
@@ -84,7 +105,10 @@ export const PlyrVideoPlayer = ({
     };
   }, [videoUrl, youtubeVideoId, videoType, onEnded, onTimeUpdate]);
 
-  const hasVideo = (videoType === "YOUTUBE" && !!youtubeVideoId) || !!videoUrl;
+  const hasVideo = 
+    (videoType === "YOUTUBE" && !!youtubeVideoId) || 
+    (videoType === "BUNNY_STREAM" && !!bunnyStreamVideoId) ||
+    !!videoUrl;
 
   if (!hasVideo) {
     return (
