@@ -17,25 +17,39 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Fawaterak credentials not configured", { status: 500 });
     }
 
+    // Get domain from request headers (more reliable for production)
+    // This works better with Vercel and other hosting platforms
+    const host = req.headers.get("host") || req.headers.get("x-forwarded-host");
+    
+    // Extract domain from host header (removes port if present)
+    let domain: string;
+    if (host) {
+      // Remove port if present (e.g., "lms-demo-phi.vercel.app:3000" -> "lms-demo-phi.vercel.app")
+      domain = host.split(":")[0];
+      
+      // For localhost, normalize to just "localhost"
+      if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
+        domain = "localhost";
+      }
+    } else {
+      // Fallback to environment variable
+      try {
+        const url = new URL(NEXT_PUBLIC_APP_URL);
+        domain = url.hostname;
+        if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
+          domain = "localhost";
+        }
+      } catch {
+        domain = NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, "").replace(/:\d+/, "").split("/")[0];
+        if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
+          domain = "localhost";
+        }
+      }
+    }
+    
     // Generate hashKey using HMAC SHA256
     // Format: Domain=YOUR_WEBSITE_DOMAIN&ProviderKey=FAWATERAK_PROVIDER_KEY
     // Note: Domain should be just the hostname (no protocol, no port, no path)
-    // For localhost, use "localhost" (without port)
-    let domain: string;
-    try {
-      const url = new URL(NEXT_PUBLIC_APP_URL);
-      domain = url.hostname;
-      // For localhost, remove port if present
-      if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
-        domain = "localhost";
-      }
-    } catch {
-      // If URL parsing fails, try to extract domain manually
-      domain = NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, "").replace(/:\d+/, "").split("/")[0];
-      if (domain === "localhost" || domain.startsWith("127.0.0.1")) {
-        domain = "localhost";
-      }
-    }
     
     const queryParam = `Domain=${domain}&ProviderKey=${FAWATERAK_PROVIDER_KEY}`;
     const hashKey = crypto
@@ -44,7 +58,7 @@ export async function POST(req: NextRequest) {
       .digest('hex');
     
     console.log("[FAWATERAK_HASH]", {
-      originalUrl: NEXT_PUBLIC_APP_URL,
+      host,
       domain,
       providerKey: FAWATERAK_PROVIDER_KEY,
       queryParam,
