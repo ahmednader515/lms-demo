@@ -50,7 +50,7 @@ function FawaterakPluginPaymentPageContent() {
     jqueryScript.onload = () => {
       console.log("[FAWATERAK_PLUGIN] jQuery loaded successfully");
       
-      // Load Fawaterak plugin after jQuery is loaded
+      // Load Fawaterak plugin after jQuery is loaded (using staging URL)
       const pluginScript = document.createElement("script");
       pluginScript.src = "https://staging.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js?v=1.2";
       pluginScript.async = true;
@@ -143,9 +143,10 @@ function FawaterakPluginPaymentPageContent() {
         const { paymentId } = await paymentResponse.json();
 
         // Prepare plugin configuration (matching Fawaterak example)
+        // Using staging environment - make sure domain is configured in Fawaterak staging dashboard
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
         const pluginConfig = {
-          envType: process.env.NEXT_PUBLIC_FAWATERAK_ENV === "production" ? "live" : "test",
+          envType: "test", // Always use "test" for staging.fawaterk.com
           hashKey: hashKey,
           style: {
             listing: "horizontal", // "horizontal" or "vertical"

@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
       queryParam,
       hashKeyPrefix: hashKey.substring(0, 20) + "...",
       vendorKeyPrefix: FAWATERAK_VENDOR_KEY?.substring(0, 10) + "...",
+      note: "Using staging environment - make sure domain is configured in Fawaterak staging dashboard",
     });
 
     return NextResponse.json({
