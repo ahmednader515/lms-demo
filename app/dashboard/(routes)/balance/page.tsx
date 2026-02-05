@@ -235,49 +235,8 @@ function BalancePageContent() {
     // Get the route for the payment method
     const paymentRoute = getPaymentMethodRoute(selectedMethod.id, selectedMethod.name, selectedMethod.originalId);
 
-    if (paymentRoute) {
-      // Navigate to custom payment page with amount as query param
-      router.push(`/dashboard/balance/payment/${paymentRoute}?amount=${amount}`);
-    } else {
-      // Fallback to direct Fawaterak payment if route not found
-      setIsCreatingPayment(true);
-      try {
-        const response = await fetch("/api/payment/fawaterak/create", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            amount: parseFloat(amount),
-            paymentMethod: selectedMethod.originalId || selectedMethod.id,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.invoiceUrl && data.paymentId) {
-            const paymentWindow = window.open(data.invoiceUrl, '_blank');
-            
-            if (paymentWindow) {
-              toast.info("تم فتح صفحة الدفع في تبويب جديد. سيتم تحديث الرصيد تلقائياً عند اكتمال الدفع");
-              setAmount("");
-            } else {
-              toast.error("يرجى السماح بفتح النوافذ المنبثقة للمتابعة");
-            }
-          } else {
-            toast.error("لم يتم إنشاء رابط الدفع");
-          }
-        } else {
-          const error = await response.text();
-          toast.error(error || "حدث خطأ أثناء إنشاء رابط الدفع");
-        }
-      } catch (error) {
-        console.error("Error creating payment:", error);
-        toast.error("حدث خطأ أثناء إنشاء رابط الدفع");
-      } finally {
-        setIsCreatingPayment(false);
-      }
-    }
+    // Navigate to Fawaterak plugin payment page
+    router.push(`/dashboard/balance/payment-plugin?amount=${amount}`);
   };
 
   const formatDate = (dateString: string) => {

@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
     const customer_name = body.customer_name || body.customerName || body.name;
     const customer_phone = body.customer_phone || body.customerPhone || body.phone || body.customer_phone_number;
     const customer_email = body.customer_email || body.customerEmail || body.email;
-    const metaData = body.metaData || body.metadata || body.meta || body.payload || {};
+    // Handle both camelCase and snake_case for payload
+    const metaData = body.metaData || body.metadata || body.meta || body.payload || body.payLoad || {};
 
     console.log("[FAWATERAK_WEBHOOK_PAID] Parsed fields:", {
       invoice_key,
