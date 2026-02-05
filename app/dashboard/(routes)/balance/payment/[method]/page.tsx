@@ -162,6 +162,89 @@ export default function PaymentMethodPage() {
     }
   }, []);
 
+  // Hide loading indicator when iframe loads
+  useEffect(() => {
+    if (invoiceUrl) {
+      const timer = setTimeout(() => {
+        const loadingEl = document.getElementById("iframe-loading");
+        if (loadingEl) {
+          loadingEl.style.display = "none";
+        }
+      }, 2000); // Hide after 2 seconds or when iframe loads
+      
+      return () => clearTimeout(timer);
+    }
+  }, [invoiceUrl]);
+
+  // Prevent Fawaterak from breaking out of iframe
+  useEffect(() => {
+    if (!invoiceUrl) return;
+
+    const originalOpen = window.open;
+    const originalLocation = window.location;
+    
+    // Override window.open to prevent Fawaterak from opening new tabs
+    window.open = function(url?: string | URL, target?: string, features?: string) {
+      console.log("[FAWATERAK] window.open intercepted:", url);
+      
+      // If it's trying to open any Fawaterak URL in a new tab, update iframe instead
+      if (url && typeof url === "string" && (url.includes("fawaterk.com") || url.includes("fawaterak.com"))) {
+        console.log("[FAWATERAK] Fawaterak attempted to open URL in new tab:", url);
+        console.log("[FAWATERAK] Updating iframe src instead of opening new tab");
+        
+        // Try to update iframe src instead of opening new tab
+        const iframe = document.getElementById("fawaterak-iframe") as HTMLIFrameElement;
+        if (iframe) {
+          iframe.src = url;
+          toast.info("تم تحديث صفحة الدفع");
+          return null; // Prevent new tab
+        }
+        
+        // If iframe not found, log error
+        console.error("[FAWATERAK] Iframe not found, cannot update src");
+        return null; // Still prevent new tab
+      }
+      
+      // Allow other opens (like success redirects to our site)
+      return originalOpen.call(window, url, target, features);
+    };
+
+    // Prevent top-level navigation from iframe
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Don't prevent, but log it
+      console.log("[FAWATERAK] Before unload event");
+    };
+
+    // Listen for messages from iframe
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin.includes("fawaterk.com") || event.origin.includes("fawaterak.com")) {
+        console.log("[FAWATERAK] Message from iframe:", event.data);
+        
+        // If Fawaterak sends a redirect message, handle it
+        if (event.data?.type === "redirect" || event.data?.redirect || event.data?.url) {
+          const redirectUrl = event.data.url || event.data.redirect;
+          if (redirectUrl && (redirectUrl.includes("fawaterk.com") || redirectUrl.includes("fawaterak.com"))) {
+            // Update iframe src instead of redirecting
+            const iframe = document.getElementById("fawaterak-iframe") as HTMLIFrameElement;
+            if (iframe) {
+              console.log("[FAWATERAK] Updating iframe src from message:", redirectUrl);
+              iframe.src = redirectUrl;
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.open = originalOpen;
+      window.removeEventListener("message", handleMessage);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [invoiceUrl]);
+
   // Poll payment status when invoice is shown
   useEffect(() => {
     if (!paymentId || !invoiceUrl) return;
@@ -238,10 +321,23 @@ export default function PaymentMethodPage() {
         const data = await response.json();
         if (data.invoiceUrl && data.paymentId) {
           // Store invoice URL and payment ID for iframe embedding
+          console.log("[FAWATERAK] Invoice created:", {
+            invoiceUrl: data.invoiceUrl,
+            paymentId: data.paymentId,
+            invoiceKey: data.invoiceKey,
+          });
           setInvoiceUrl(data.invoiceUrl);
           setPaymentId(data.paymentId);
           setIsProcessing(false);
           toast.success("تم إنشاء رابط الدفع بنجاح");
+          
+          // Scroll to iframe after a short delay
+          setTimeout(() => {
+            const iframe = document.getElementById("fawaterak-iframe");
+            if (iframe) {
+              iframe.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          }, 100);
         } else {
           toast.error("لم يتم إنشاء رابط الدفع");
           setIsProcessing(false);
@@ -325,15 +421,81 @@ export default function PaymentMethodPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="w-full" style={{ minHeight: '800px' }}>
+              <div className="w-full" style={{ minHeight: '800px', position: 'relative' }}>
                 <iframe
+                  id="fawaterak-iframe"
                   src={invoiceUrl}
                   className="w-full border-0 rounded-lg"
-                  style={{ minHeight: '800px', width: '100%' }}
+                  style={{ 
+                    minHeight: '800px', 
+                    width: '100%',
+                    border: '1px solid #e5e7eb',
+                    display: 'block',
+                  }}
                   title="Fawaterak Payment"
-                  allow="payment *"
-                  sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-top-navigation allow-modals"
+                  allow="payment *; camera *; microphone *"
+                  sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-modals"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  scrolling="yes"
+                  loading="eager"
+                  importance="high"
+                  onLoad={(e) => {
+                    console.log("[FAWATERAK_IFRAME] Iframe loaded successfully");
+                    // Hide loading indicator
+                    const loadingEl = document.getElementById("iframe-loading");
+                    if (loadingEl) {
+                      loadingEl.style.display = "none";
+                    }
+                    
+                    const iframe = e.currentTarget;
+                    // Check if iframe content loaded (will be null for cross-origin, which is expected)
+                    try {
+                      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                      if (iframeDoc) {
+                        console.log("[FAWATERAK_IFRAME] Same-origin iframe (unexpected but OK)");
+                      } else {
+                        console.log("[FAWATERAK_IFRAME] Cross-origin iframe (expected - Fawaterak domain)");
+                      }
+                    } catch (error) {
+                      // Expected error for cross-origin - this is normal
+                      console.log("[FAWATERAK_IFRAME] Cross-origin access (expected)");
+                    }
+                  }}
+                  onError={(e) => {
+                    console.error("[FAWATERAK_IFRAME] Iframe load error:", e);
+                    toast.error("حدث خطأ في تحميل صفحة الدفع");
+                    const loadingEl = document.getElementById("iframe-loading");
+                    if (loadingEl) {
+                      loadingEl.style.display = "none";
+                    }
+                  }}
                 />
+                {/* Loading indicator */}
+                <div 
+                  id="iframe-loading" 
+                  className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-10"
+                  style={{ display: 'flex' }}
+                >
+                  <div className="text-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#211FC3] mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">جاري تحميل صفحة الدفع...</p>
+                  </div>
+                </div>
+              </div>
+              {/* Info message */}
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800 mb-2">
+                  💡 إذا لم تظهر صفحة الدفع في الإطار أعلاه، يمكنك فتحها في تبويب جديد:
+                </p>
+                <a
+                  href={invoiceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline font-medium inline-flex items-center gap-1"
+                >
+                  <span>فتح صفحة الدفع في تبويب جديد</span>
+                  <ArrowRight className="h-4 w-4" />
+                </a>
               </div>
               <div className="mt-4 text-center text-sm text-muted-foreground">
                 <p>بعد إتمام الدفع، سيتم تحديث رصيدك تلقائياً</p>

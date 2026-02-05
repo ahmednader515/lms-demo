@@ -230,20 +230,57 @@ export async function POST(req: NextRequest) {
     // If we reach here, response is ok (either original or alternative endpoint succeeded)
     const invoiceResponse = await response.json();
 
+    console.log("[FAWATERAK_CREATE_RESPONSE]", JSON.stringify(invoiceResponse, null, 2));
+
+    // Fawaterak response uses camelCase: invoiceKey, invoiceId (not snake_case)
+    const invoiceKey = invoiceResponse.data?.invoiceKey || invoiceResponse.data?.invoice_key || invoiceResponse.invoiceKey || invoiceResponse.invoice_key;
+    const invoiceUrl = invoiceResponse.data?.url || invoiceResponse.url;
+    const invoiceId = invoiceResponse.data?.invoiceId || invoiceResponse.data?.invoice_id || invoiceResponse.invoiceId || invoiceResponse.invoice_id;
+    
+    // For iframe embedding, Fawaterak uses the same invoice URL
+    // The URL format is: https://staging.fawaterk.com/invoice/{invoice_id}/{invoice_key}
+    // This should work in iframe if domain is whitelisted in Fawaterak dashboard
+    // The invoice URL should be iframe-compatible when domain is configured
+    
+    let iframeUrl = invoiceUrl;
+    
+    // Check if there's a specific frame_url in the response
+    if (invoiceResponse.data?.frame_url || invoiceResponse.frame_url) {
+      iframeUrl = invoiceResponse.data?.frame_url || invoiceResponse.frame_url;
+    } else if (invoiceUrl && invoiceKey) {
+      // Use the invoice URL as-is - it should work in iframe if domain is configured
+      iframeUrl = invoiceUrl;
+    }
+
+    console.log("[FAWATERAK_CREATE] Invoice URLs:", {
+      invoiceUrl,
+      iframeUrl,
+      invoiceKey,
+      invoiceId,
+      note: "Iframe URL should work if domain is configured in Fawaterak dashboard",
+    });
+
     // Update payment with invoice details
     await db.payment.update({
       where: { id: payment.id },
       data: {
-        fawaterakInvoiceId: invoiceResponse.data?.invoice_key || invoiceResponse.invoice_key || null,
-        fawaterakInvoiceUrl: invoiceResponse.data?.url || invoiceResponse.url || null,
+        fawaterakInvoiceId: invoiceKey || null,
+        fawaterakInvoiceUrl: invoiceUrl || null,
       },
+    });
+
+    console.log("[FAWATERAK_CREATE] Payment updated:", {
+      paymentId: payment.id,
+      invoiceKey,
+      invoiceUrl,
     });
 
     return NextResponse.json({
       success: true,
       paymentId: payment.id,
-      invoiceUrl: invoiceResponse.data?.url || invoiceResponse.url,
-      invoiceKey: invoiceResponse.data?.invoice_key || invoiceResponse.invoice_key,
+      invoiceUrl: iframeUrl, // Return URL for iframe embedding
+      invoiceKey: invoiceKey,
+      invoiceId: invoiceId,
     });
   } catch (error) {
     console.error("[FAWATERAK_CREATE_ERROR]", error);

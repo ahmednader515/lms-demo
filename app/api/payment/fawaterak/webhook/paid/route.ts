@@ -84,10 +84,47 @@ export async function POST(req: NextRequest) {
 
     if (!payment) {
       console.error("[FAWATERAK_WEBHOOK_PAID] Payment not found for invoice:", invoice_key);
+      console.error("[FAWATERAK_WEBHOOK_PAID] Full body:", JSON.stringify(body, null, 2));
       console.error("[FAWATERAK_WEBHOOK_PAID] metaData:", JSON.stringify(metaData, null, 2));
       console.error("[FAWATERAK_WEBHOOK_PAID] invoice_total:", invoice_total);
       console.error("[FAWATERAK_WEBHOOK_PAID] customer_phone:", customer_phone);
-      return new NextResponse("Payment not found", { status: 404 });
+      
+      // Try to find any pending payment with matching amount (last resort)
+      if (invoice_total) {
+        console.log("[FAWATERAK_WEBHOOK_PAID] Attempting last resort lookup by amount:", invoice_total);
+        const amountPayments = await db.payment.findMany({
+          where: {
+            amount: parseFloat(invoice_total),
+            status: "PENDING",
+          },
+          include: { user: true },
+          orderBy: { createdAt: "desc" },
+          take: 5, // Get last 5 pending payments with this amount
+        });
+        console.log("[FAWATERAK_WEBHOOK_PAID] Found pending payments with amount:", amountPayments.length);
+        
+        if (amountPayments.length > 0) {
+          // Use the most recent one
+          payment = amountPayments[0];
+          await db.payment.update({
+            where: { id: payment.id },
+            data: { fawaterakInvoiceId: invoice_key },
+          });
+          console.log("[FAWATERAK_WEBHOOK_PAID] Using most recent pending payment:", payment.id);
+        }
+      }
+      
+      if (!payment) {
+        return NextResponse.json(
+          { 
+            error: "Payment not found",
+            invoice_key,
+            invoice_total,
+            metaData,
+          },
+          { status: 404 }
+        );
+      }
     }
 
     // If payment is already processed, don't process again
@@ -140,9 +177,20 @@ export async function POST(req: NextRequest) {
       paymentId: payment.id,
       newBalance: updatedUser.balance,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[FAWATERAK_WEBHOOK_PAID_ERROR]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    console.error("[FAWATERAK_WEBHOOK_PAID_ERROR] Stack:", error?.stack);
+    console.error("[FAWATERAK_WEBHOOK_PAID_ERROR] Message:", error?.message);
+    
+    // Return detailed error for debugging
+    return NextResponse.json(
+      { 
+        error: "Internal Error",
+        message: error?.message || "Unknown error",
+        stack: process.env.NODE_ENV === "development" ? error?.stack : undefined,
+      },
+      { status: 500 }
+    );
   }
 }
 
