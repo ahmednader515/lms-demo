@@ -33,8 +33,8 @@ export async function GET(
       return new NextResponse("Unauthorized", { status: 403 });
     }
 
-    // If payment has invoice key and is still pending, check with Fawaterak API
-    if (payment.fawaterakInvoiceId && payment.status === "PENDING" && FAWATERAK_API_KEY && FAWATERAK_PROVIDER_KEY) {
+    // If payment has invoice key, check with Fawaterak API to verify status
+    if (payment.fawaterakInvoiceId && FAWATERAK_API_KEY && FAWATERAK_PROVIDER_KEY) {
       try {
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
@@ -53,18 +53,18 @@ export async function GET(
 
           // If payment is successful, update database
           if (invoiceStatus === "paid" || invoiceStatus === "PAID" || invoiceStatus === "success" || invoiceStatus === "SUCCESS") {
-            // Update payment status
-            await db.payment.update({
-              where: { id: payment.id },
-              data: {
-                status: "PAID",
-                paymentMethod: invoiceData.data?.payment_method || invoiceData.payment_method || payment.paymentMethod,
-              },
-            });
-
-            // Add balance to user account (only if not already added)
+            // Update payment status if not already PAID
             if (payment.status !== "PAID") {
-              await db.user.update({
+              await db.payment.update({
+                where: { id: payment.id },
+                data: {
+                  status: "PAID",
+                  paymentMethod: invoiceData.data?.payment_method || invoiceData.payment_method || payment.paymentMethod,
+                },
+              });
+
+              // Add balance to user account
+              const updatedUser = await db.user.update({
                 where: { id: payment.userId },
                 data: {
                   balance: {
@@ -83,7 +83,7 @@ export async function GET(
                 },
               });
 
-              console.log("[PAYMENT_STATUS] Balance updated for payment:", payment.id);
+              console.log("[PAYMENT_STATUS] Balance updated for payment:", payment.id, "New balance:", updatedUser.balance);
             }
 
             // Refresh payment data

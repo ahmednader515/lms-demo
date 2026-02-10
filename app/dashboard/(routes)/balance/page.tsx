@@ -171,6 +171,11 @@ function BalancePageContent() {
   const verifyAndUpdateBalance = async (paymentId: string) => {
     try {
       console.log("[BALANCE] Verifying payment status for:", paymentId);
+      
+      // First, refresh the balance from the server to get the latest data
+      await fetchBalance();
+      
+      // Then verify the payment status
       const response = await fetch(`/api/payment/fawaterak/status/${paymentId}`);
       
       if (response.ok) {
@@ -178,22 +183,30 @@ function BalancePageContent() {
         console.log("[BALANCE] Payment status:", paymentData.status);
         
         if (paymentData.status === "PAID") {
-          // Payment is confirmed as PAID, refresh balance and transactions
+          // Payment is confirmed as PAID, refresh balance and transactions again
           toast.success("تم إتمام عملية الدفع بنجاح");
           await fetchBalance();
           await fetchTransactions();
         } else if (paymentData.status === "PENDING") {
+          // Payment is still pending, check again after a delay
           toast.info("قيد معالجة الدفع... سيتم تحديث الرصيد تلقائياً عند اكتمال الدفع");
+          // Try again after 3 seconds
+          setTimeout(async () => {
+            console.log("[BALANCE] Retrying payment verification...");
+            await verifyAndUpdateBalance(paymentId);
+          }, 3000);
         } else {
-          toast.error("فشلت عملية الدفع أو تم إلغاؤها");
+          // Payment failed or was cancelled, but we already refreshed the balance
+          // Check if the balance was already updated by the webhook
+          console.log("[BALANCE] Payment status is:", paymentData.status);
         }
       } else {
         console.error("[BALANCE] Failed to verify payment status");
-        toast.error("فشل في التحقق من حالة الدفع");
+        // Balance was already refreshed above
       }
     } catch (error) {
       console.error("[BALANCE] Error verifying payment:", error);
-      // Fallback: just refresh balance
+      // Fallback: just refresh balance and show success
       await fetchBalance();
       await fetchTransactions();
       toast.success("تم إتمام عملية الدفع بنجاح");
