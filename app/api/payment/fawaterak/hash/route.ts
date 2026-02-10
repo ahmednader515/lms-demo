@@ -62,9 +62,20 @@ export async function POST(req: NextRequest) {
       domain,
       providerKey: FAWATERAK_PROVIDER_KEY,
       queryParam,
-      hashKeyPrefix: hashKey.substring(0, 20) + "...",
-      vendorKeyPrefix: FAWATERAK_VENDOR_KEY?.substring(0, 10) + "...",
+      hashKeyPrefix: hashKey.substring(0, 30) + "...",
+      hashKeyLength: hashKey.length,
+      vendorKeyLength: FAWATERAK_VENDOR_KEY?.length,
+      vendorKeyPrefix: FAWATERAK_VENDOR_KEY?.substring(0, 15) + "...",
       note: "Using staging environment - make sure domain is configured in Fawaterak staging dashboard",
+      verification: "Check that domain matches exactly in Fawaterak dashboard IFRAM Domains field",
+    });
+    
+    // Log the exact values that should match Fawaterak dashboard
+    console.log("[FAWATERAK_HASH_VERIFICATION]", {
+      domainToConfigure: domain,
+      providerKeyToVerify: FAWATERAK_PROVIDER_KEY,
+      hashKeyGenerated: hashKey,
+      queryStringUsed: queryParam,
     });
 
     return NextResponse.json({

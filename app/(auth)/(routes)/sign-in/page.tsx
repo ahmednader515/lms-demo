@@ -22,6 +22,37 @@ export default function SignInPage() {
     phoneNumber: "",
     password: "",
   });
+  
+  // Get redirect URL from query params or use referrer
+  const getRedirectUrl = () => {
+    if (typeof window === "undefined") return null;
+    
+    // Check if we're in an iframe
+    const isInIframe = window.self !== window.top;
+    
+    // Get redirect from URL params
+    const params = new URLSearchParams(window.location.search);
+    const redirectUrl = params.get("redirect") || params.get("callbackUrl");
+    
+    if (redirectUrl) {
+      return redirectUrl;
+    }
+    
+    // If in iframe, try to get referrer
+    if (isInIframe && document.referrer) {
+      try {
+        const referrerUrl = new URL(document.referrer);
+        // If referrer is from same origin, use it
+        if (referrerUrl.origin === window.location.origin) {
+          return referrerUrl.pathname + referrerUrl.search;
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+    
+    return null;
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -52,6 +83,29 @@ export default function SignInPage() {
       }
 
       toast.success("تم تسجيل الدخول بنجاح");
+      
+      // Check if we should redirect to a specific URL
+      const redirectUrl = getRedirectUrl();
+      
+      if (redirectUrl) {
+        // Redirect to the specified URL (e.g., payment page)
+        if (typeof window !== "undefined") {
+          // If in iframe, try to redirect parent window
+          if (window.self !== window.top) {
+            try {
+              window.top!.location.href = redirectUrl;
+            } catch (e) {
+              // If we can't access parent (cross-origin), redirect current window
+              window.location.href = redirectUrl;
+            }
+          } else {
+            window.location.replace(redirectUrl);
+          }
+        } else {
+          router.replace(redirectUrl);
+        }
+        return;
+      }
       
       // Get user data to determine role and redirect accordingly
       const response = await fetch("/api/auth/session", { cache: "no-store" });

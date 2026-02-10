@@ -23,20 +23,40 @@ export default withAuth(
                       req.nextUrl.pathname.startsWith("/forgot-password") ||
                       req.nextUrl.pathname.startsWith("/reset-password");
     
-    // Add check for payment status page
+    // Add check for payment status page and public payment pages
     const isPaymentStatusPage = req.nextUrl.pathname.includes("/payment-status");
+    const isPublicPaymentPage = req.nextUrl.pathname.startsWith("/payment/");
 
     // If user is on auth page and is authenticated, redirect to appropriate dashboard
+    // But check for redirect parameter first
     if (isAuthPage && req.nextauth.token) {
+      const redirectUrl = req.nextUrl.searchParams.get("redirect") || req.nextUrl.searchParams.get("callbackUrl");
+      
+      if (redirectUrl) {
+        // Redirect to the specified URL
+        try {
+          const redirect = new URL(redirectUrl, req.url);
+          // Only allow redirects to same origin
+          if (redirect.origin === new URL(req.url).origin) {
+            return NextResponse.redirect(redirect);
+          }
+        } catch (e) {
+          // Invalid URL, fall through to default redirect
+        }
+      }
+      
       const userRole = req.nextauth.token?.role || "USER";
       const dashboardUrl = getDashboardUrlByRole(userRole);
       return NextResponse.redirect(new URL(dashboardUrl, req.url));
     }
 
     // If user is not authenticated and trying to access protected routes
-    // But exclude payment status page from this check
-    if (!req.nextauth.token && !isAuthPage && !isPaymentStatusPage) {
-      return NextResponse.redirect(new URL("/sign-in", req.url), { status: 302 });
+    // But exclude payment status page and public payment pages from this check
+    if (!req.nextauth.token && !isAuthPage && !isPaymentStatusPage && !isPublicPaymentPage) {
+      // Preserve the current URL as redirect parameter
+      const signInUrl = new URL("/sign-in", req.url);
+      signInUrl.searchParams.set("redirect", req.nextUrl.pathname + req.nextUrl.search);
+      return NextResponse.redirect(signInUrl, { status: 302 });
     }
 
     // Check for admin routes

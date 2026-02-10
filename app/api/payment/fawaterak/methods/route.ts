@@ -42,6 +42,18 @@ export async function GET(req: NextRequest) {
     
     console.log("[FAWATERAK_METHODS_RESPONSE]", JSON.stringify(methods, null, 2));
 
+    // Check if this is a request from the plugin (via proxy)
+    // If so, return the raw Fawaterak response format
+    const userAgent = req.headers.get("user-agent") || "";
+    const referer = req.headers.get("referer") || "";
+    
+    // If request is from plugin proxy, return raw response
+    if (referer.includes("payment-plugin") || req.headers.get("x-plugin-proxy")) {
+      console.log("[FAWATERAK_METHODS] Returning raw response for plugin");
+      return NextResponse.json(methods);
+    }
+
+    // Otherwise, return formatted response for our frontend
     // Map payment methods to Arabic names
     const paymentMethodsMap: Record<string, string> = {
       vodafone_cash: "Vodafone Cash",
