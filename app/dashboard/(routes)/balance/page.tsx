@@ -110,10 +110,8 @@ function BalancePageContent() {
     
     if (paymentId && status) {
       if (status === "success") {
-        // Refresh balance and transactions (webhook should have already updated them)
-        fetchBalance();
-        fetchTransactions();
-        toast.success("تم إتمام عملية الدفع بنجاح");
+        // Verify payment status and update balance if needed
+        verifyAndUpdateBalance(paymentId);
         // Clean URL
         router.replace("/dashboard/balance");
       } else if (status === "fail") {
@@ -124,7 +122,7 @@ function BalancePageContent() {
         router.replace("/dashboard/balance");
       }
     }
-  }, [isStudent]);
+  }, [isStudent, searchParams, router]);
 
   // Payment status is handled by webhooks, no need to track activePaymentId
 
@@ -166,6 +164,39 @@ function BalancePageContent() {
       console.error("Error fetching payment methods:", error);
     } finally {
       setIsLoadingMethods(false);
+    }
+  };
+
+  // Verify payment status and update balance if needed
+  const verifyAndUpdateBalance = async (paymentId: string) => {
+    try {
+      console.log("[BALANCE] Verifying payment status for:", paymentId);
+      const response = await fetch(`/api/payment/fawaterak/status/${paymentId}`);
+      
+      if (response.ok) {
+        const paymentData = await response.json();
+        console.log("[BALANCE] Payment status:", paymentData.status);
+        
+        if (paymentData.status === "PAID") {
+          // Payment is confirmed as PAID, refresh balance and transactions
+          toast.success("تم إتمام عملية الدفع بنجاح");
+          await fetchBalance();
+          await fetchTransactions();
+        } else if (paymentData.status === "PENDING") {
+          toast.info("قيد معالجة الدفع... سيتم تحديث الرصيد تلقائياً عند اكتمال الدفع");
+        } else {
+          toast.error("فشلت عملية الدفع أو تم إلغاؤها");
+        }
+      } else {
+        console.error("[BALANCE] Failed to verify payment status");
+        toast.error("فشل في التحقق من حالة الدفع");
+      }
+    } catch (error) {
+      console.error("[BALANCE] Error verifying payment:", error);
+      // Fallback: just refresh balance
+      await fetchBalance();
+      await fetchTransactions();
+      toast.success("تم إتمام عملية الدفع بنجاح");
     }
   };
 
