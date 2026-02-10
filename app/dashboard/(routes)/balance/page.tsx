@@ -91,6 +91,7 @@ function BalancePageContent() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
   const [isLoadingMethods, setIsLoadingMethods] = useState(false);
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [paymentRedirectHandled, setPaymentRedirectHandled] = useState(false);
 
   // Check if user is a student (USER role)
   const isStudent = session?.user?.role === "USER";
@@ -108,12 +109,12 @@ function BalancePageContent() {
     const paymentId = searchParams?.get("payment");
     const status = searchParams?.get("status");
     
-    if (paymentId && status) {
+    if (paymentId && status && !paymentRedirectHandled) {
+      setPaymentRedirectHandled(true);
+      
       if (status === "success") {
         // Verify payment status and update balance if needed
         verifyAndUpdateBalance(paymentId);
-        // Clean URL
-        router.replace("/dashboard/balance");
       } else if (status === "fail") {
         toast.error("فشلت عملية الدفع");
         router.replace("/dashboard/balance");
@@ -122,7 +123,7 @@ function BalancePageContent() {
         router.replace("/dashboard/balance");
       }
     }
-  }, [isStudent, searchParams, router]);
+  }, [isStudent, searchParams, router, paymentRedirectHandled]);
 
   // Payment status is handled by webhooks, no need to track activePaymentId
 
@@ -197,19 +198,23 @@ function BalancePageContent() {
           }, 3000);
         } else {
           // Payment failed or was cancelled, but we already refreshed the balance
-          // Check if the balance was already updated by the webhook
           console.log("[BALANCE] Payment status is:", paymentData.status);
         }
       } else {
         console.error("[BALANCE] Failed to verify payment status");
         // Balance was already refreshed above
       }
+      
+      // Clean URL after verification is complete
+      router.replace("/dashboard/balance");
     } catch (error) {
       console.error("[BALANCE] Error verifying payment:", error);
       // Fallback: just refresh balance and show success
       await fetchBalance();
       await fetchTransactions();
       toast.success("تم إتمام عملية الدفع بنجاح");
+      // Clean URL even on error
+      router.replace("/dashboard/balance");
     }
   };
 
