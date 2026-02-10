@@ -171,51 +171,47 @@ function BalancePageContent() {
   // Verify payment status and update balance if needed
   const verifyAndUpdateBalance = async (paymentId: string) => {
     try {
-      console.log("[BALANCE] Verifying payment status for:", paymentId);
+      console.log("[BALANCE] Confirming payment and updating balance for:", paymentId);
       
-      // First, refresh the balance from the server to get the latest data
-      await fetchBalance();
-      
-      // Then verify the payment status
-      const response = await fetch(`/api/payment/fawaterak/status/${paymentId}`);
+      // Call the confirm-payment API to update the balance
+      const response = await fetch("/api/payment/fawaterak/confirm-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ paymentId }),
+      });
       
       if (response.ok) {
-        const paymentData = await response.json();
-        console.log("[BALANCE] Payment status:", paymentData.status);
+        const data = await response.json();
+        console.log("[BALANCE] Payment confirmation result:", data);
         
-        if (paymentData.status === "PAID") {
-          // Payment is confirmed as PAID, refresh balance and transactions again
+        if (data.success) {
           toast.success("تم إتمام عملية الدفع بنجاح");
           await fetchBalance();
           await fetchTransactions();
-        } else if (paymentData.status === "PENDING") {
-          // Payment is still pending, check again after a delay
-          toast.info("قيد معالجة الدفع... سيتم تحديث الرصيد تلقائياً عند اكتمال الدفع");
-          // Try again after 3 seconds
-          setTimeout(async () => {
-            console.log("[BALANCE] Retrying payment verification...");
-            await verifyAndUpdateBalance(paymentId);
-          }, 3000);
         } else {
-          // Payment failed or was cancelled, but we already refreshed the balance
-          console.log("[BALANCE] Payment status is:", paymentData.status);
+          // Payment was already processed
+          toast.success("تم إتمام عملية الدفع بنجاح");
+          await fetchBalance();
+          await fetchTransactions();
         }
       } else {
-        console.error("[BALANCE] Failed to verify payment status");
-        // Balance was already refreshed above
+        const error = await response.json();
+        console.error("[BALANCE] Payment confirmation failed:", error);
+        // Still try to refresh the balance
+        await fetchBalance();
+        await fetchTransactions();
       }
-      
-      // Clean URL after verification is complete
-      router.replace("/dashboard/balance");
     } catch (error) {
-      console.error("[BALANCE] Error verifying payment:", error);
-      // Fallback: just refresh balance and show success
+      console.error("[BALANCE] Error confirming payment:", error);
+      // Fallback: just refresh balance
       await fetchBalance();
       await fetchTransactions();
-      toast.success("تم إتمام عملية الدفع بنجاح");
-      // Clean URL even on error
-      router.replace("/dashboard/balance");
     }
+    
+    // Clean URL after verification is complete
+    router.replace("/dashboard/balance");
   };
 
   // No polling needed - webhooks handle payment updates automatically
