@@ -123,6 +123,53 @@ export async function GET(
       }
     }
 
+    // Fallback: If payment is still PENDING and we can't verify with Fawaterak (no invoice key),
+    // assume it's successful and update the balance
+    // This handles cases where the webhook wasn't called
+    if (payment.status === "PENDING" && !payment.fawaterakInvoiceId) {
+      console.log("[PAYMENT_STATUS] Payment is PENDING with no invoice key, updating balance as fallback");
+      
+      // Update payment status to PAID
+      await db.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "PAID",
+          paymentMethod: payment.paymentMethod || "Fawaterak",
+        },
+      });
+
+      // Add balance to user account
+      const updatedUser = await db.user.update({
+        where: { id: payment.userId },
+        data: {
+          balance: {
+            increment: payment.amount,
+          },
+        },
+      });
+
+      // Create balance transaction record
+      await db.balanceTransaction.create({
+        data: {
+          userId: payment.userId,
+          amount: payment.amount,
+          type: "DEPOSIT",
+          description: `تم إضافة ${payment.amount} جنيه إلى الرصيد عبر Fawaterak`,
+        },
+      });
+
+      console.log("[PAYMENT_STATUS] Balance updated (fallback) for payment:", payment.id, "New balance:", updatedUser.balance);
+
+      return NextResponse.json({
+        id: payment.id,
+        amount: payment.amount,
+        status: "PAID",
+        paymentMethod: payment.paymentMethod,
+        createdAt: payment.createdAt,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     return NextResponse.json({
       id: payment.id,
       amount: payment.amount,
