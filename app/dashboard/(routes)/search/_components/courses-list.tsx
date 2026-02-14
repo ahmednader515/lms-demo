@@ -1,6 +1,5 @@
 import { Course, Chapter, User } from "@prisma/client";
 import { CourseCard } from "@/components/course-card";
-import { getCdnUrl } from "@/lib/cdn";
 
 interface CoursesListProps {
     items: (Course & {
@@ -26,7 +25,7 @@ export const CoursesList = ({
                         progress={null}
                         user={{
                             name: item.user.fullName,
-                            image: item.user.image || getCdnUrl("/male.png")
+                            image: item.user.image || "/male.png"
                         }}
                     />
                 ))}

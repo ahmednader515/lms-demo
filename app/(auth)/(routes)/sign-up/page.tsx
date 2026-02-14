@@ -10,7 +10,7 @@ import Link from "next/link";
 import axios, { AxiosError } from "axios";
 import { Check, X, Eye, EyeOff, ChevronLeft } from "lucide-react";
 import Image from "next/image";
-import { getCdnUrl } from "@/lib/cdn";
+// Removed CDN import - using local images
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -97,7 +97,7 @@ export default function SignUpPage() {
           <div className="text-center space-y-6 p-8">
             <div className="relative w-64 h-64 mx-auto">
               <Image
-                src={getCdnUrl("/logo.png")}
+                src="/logo.png"
                 alt="Teacher"
                 fill
                 className="object-cover rounded-full border-4 border-[#211FC3]/20 shadow-2xl"

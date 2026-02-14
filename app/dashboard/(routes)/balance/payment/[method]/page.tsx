@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { ArrowRight, Loader2, ArrowLeft } from "lucide-react";
 import Image from "next/image";
-import { getCdnUrl } from "@/lib/cdn";
+// Removed CDN import - using local images
 
 interface PaymentMethodInfo {
   id: string;
@@ -372,7 +372,7 @@ export default function PaymentMethodPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Image
-                  src={getCdnUrl("/logo.png")}
+                  src="/logo.png"
                   alt="Logo"
                   width={80}
                   height={80}

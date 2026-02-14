@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Image from "next/image";
-import { getCdnUrl } from "@/lib/cdn";
+// Removed CDN import - using local images
 
 // Declare Fawaterak plugin types
 declare global {
@@ -622,12 +622,11 @@ function FawaterakPluginPaymentPageContent() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Image
-                src={getCdnUrl("/logo.png")}
+                src="/logo.png"
                 alt="Logo"
                 width={80}
                 height={80}
                 className="object-contain"
-                unoptimized
               />
               <div>
                 <h1 className="text-2xl font-bold text-[#211FC3]">مستقبلنا</h1>
